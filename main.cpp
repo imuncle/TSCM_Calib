@@ -45,5 +45,27 @@ int main(int argc, char **argv)
     }
     DoubleSphereCamera ds_camera;
     ds_camera.calibrate(pixel_coordinates, world_coordinates, img_size);
+    std::cout << "fx:" << ds_camera.fx() << ", fy:" << ds_camera.fy() << ", cx:" << ds_camera.cx() << ", cy:" << ds_camera.cy() << ", alpha:" << ds_camera.alpha() << ", xi:" << ds_camera.xi() << std::endl;
+    std::vector<cv::Mat> Rt = ds_camera.Rt();
+    double error = 0;
+    for(int i = 0; i < Rt.size(); i++)
+    {
+        sprintf(str, "../gopro/gopro%02d.jpg", i+1);
+        cv::Mat img = cv::imread(str);
+        std::vector<cv::Point2d> pixels_reproject;
+        ds_camera.Reproject(world_coordinates, Rt[i], pixels_reproject);
+        for (int j = 0; j < pixels_reproject.size(); j++)
+        {
+            cv::circle(img, pixels_reproject[j], 5, cv::Scalar(0,0,255), 2);
+            error += std::sqrt((pixels_reproject[j].x-pixel_coordinates[i][j].x)*(pixels_reproject[j].x-pixel_coordinates[i][j].x)+
+                               (pixels_reproject[j].y-pixel_coordinates[i][j].y)*(pixels_reproject[j].y-pixel_coordinates[i][j].y));
+        }
+        cv::imshow("img", img);
+        int key = cv::waitKey(0);
+        if(key == 'q')
+            break;
+    }
+    error /= (Rt.size() * world_coordinates.size());
+    std::cout << "mean error: " << error << std::endl;
     return 0;
 }
