@@ -133,7 +133,16 @@ void DoubleSphereCamera::initialize_param(const std::vector<std::vector<cv::Poin
         for(int j = 0; j < r13_sqrt.size(); j++)
         {
             r13.push_back(r13_sqrt[j]);
-            r23.push_back(-(r11*r12+r21*r22)/r13_sqrt[j]);
+            if(r13_sqrt[j] < 1e-5)
+            {
+                r23.push_back(std::sqrt(BB-CC));
+                r23.push_back(-std::sqrt(BB-CC));
+                r13.push_back(r13_sqrt[j]);
+            }
+            else
+            {
+                r23.push_back(-(r11*r12+r21*r22)/r13_sqrt[j]);
+            }
         }
         
         std::vector<cv::Mat> Rt;
@@ -179,7 +188,6 @@ void DoubleSphereCamera::initialize_param(const std::vector<std::vector<cv::Poin
         int min_id = 0;
         for(int j = 0; j < Rt.size(); j++)
         {
-            if(Rt[j].at<double>(2,2) < 0) continue;
             double error = ReprojectError(pixels[i], worlds, Rt[j], cx_, cy_, gammas_[j]/2, gammas_[j]/2, xi_, alpha_);
             if(error < min_error)
             {
@@ -258,4 +266,26 @@ void DoubleSphereCamera::refinement(const std::vector<std::vector<cv::Point2d>>&
     ceres::Solve(options, &problem, &summary);
 
     std::cout << summary.BriefReport() << std::endl;
+}
+
+void DoubleSphereCamera::undistort(double fx, double fy, double cx, double cy, cv::Size img_size, cv::Mat& mapx, cv::Mat& mapy)
+{
+    mapx = cv::Mat(img_size, CV_32FC1);
+    mapy = cv::Mat(img_size, CV_32FC1);
+    for(int i = 0; i < img_size.height; i++)
+    {
+        for(int j = 0; j < img_size.width; j++)
+        {
+            // 先根据针孔相机模型计算入射光线向量
+            double x = (j - cx) / fx;
+            double y = (i - cy) / fy;
+            double z = 1.0;
+            double d1 = std::sqrt(x*x+y*y+z*z);
+            double d2 = std::sqrt(x*x+y*y+std::pow(z+xi_*d1,2));
+            double pixel_x = fx_ * x/(alpha_*d2+(1-alpha_)*(xi_*d1+z)) + cx_;
+            double pixel_y = fy_ * y/(alpha_*d2+(1-alpha_)*(xi_*d1+z)) + cy_;
+            mapx.at<float>(i, j) = pixel_x;
+            mapy.at<float>(i, j) = pixel_y;
+        }
+    }
 }

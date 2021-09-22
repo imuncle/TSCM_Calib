@@ -1,18 +1,19 @@
 #include "findCorner.h"
 #include <opencv2/opencv.hpp>
 #include "DS.h"
+#include "multi_calib.hpp"
 
 int main(int argc, char **argv)
 {
-    int chessboard_size = 20;
+    int chessboard_size = 30;
     std::vector<std::vector<cv::Point2d>> pixel_coordinates;
     std::vector<cv::Point3d> world_coordinates;
     struct Chessboarder_t find_corner_chessboard;
     char str[30];
     cv::Size img_size;
-    for(int i = 0; i < 11; i++)
+    for(int i = 0; i < 26; i++)
     {
-        sprintf(str, "../gopro/gopro%02d.jpg", i+1);
+        sprintf(str, "../calib_capture/%d_1.bmp", i+1);
         cv::Mat img = cv::imread(str);
         img_size = img.size();
         find_corner_chessboard = findCorner(img, 2);
@@ -50,7 +51,7 @@ int main(int argc, char **argv)
     double error = 0;
     for(int i = 0; i < Rt.size(); i++)
     {
-        sprintf(str, "../gopro/gopro%02d.jpg", i+1);
+        sprintf(str, "../calib_capture/%d_1.bmp", i+1);
         cv::Mat img = cv::imread(str);
         std::vector<cv::Point2d> pixels_reproject;
         ds_camera.Reproject(world_coordinates, Rt[i], pixels_reproject);
@@ -67,5 +68,17 @@ int main(int argc, char **argv)
     }
     error /= (Rt.size() * world_coordinates.size());
     std::cout << "mean error: " << error << std::endl;
+    cv::Mat mapx, mapy;
+    ds_camera.undistort(ds_camera.fx(), ds_camera.fy(), ds_camera.cx(), ds_camera.cy(), img_size, mapx, mapy);
+    for(int i = 0; i < Rt.size(); i++)
+    {
+        sprintf(str, "../calib_capture/%d_1.bmp", i+1);
+        cv::Mat img = cv::imread(str);
+        cv::remap(img, img, mapx, mapy, CV_INTER_LINEAR);
+        cv::imshow("img", img);
+        int key = cv::waitKey(0);
+        if(key == 'q')
+            break;
+    }
     return 0;
 }
