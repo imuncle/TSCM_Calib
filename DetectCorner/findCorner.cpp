@@ -7,7 +7,7 @@
 struct Chessboarder_t findCorner(cv::Mat img, int sigma)
 {
     if (img.channels() == 3)
-        cv::cvtColor(img, img, CV_BGR2GRAY);
+        cv::cvtColor(img, img, cv::COLOR_BGR2GRAY);
     cv::Mat du = (cv::Mat_<double>(3, 3) << -1, 0, 1, -1, 0, 1, -1, 0, 1);
     cv::Mat dv = du.t();
     cv::Mat img_dv, img_du;
@@ -15,8 +15,8 @@ struct Chessboarder_t findCorner(cv::Mat img, int sigma)
     cv::Mat img_weight = cv::Mat::zeros(img.size(), CV_64F);
     cv::Mat img_double;
     img.convertTo(img_double, CV_64F);
-    cv::filter2D(img_double, img_du, img_double.depth(), du, cvPoint(-1, -1));
-    cv::filter2D(img_double, img_dv, img_double.depth(), dv, cvPoint(-1, -1));
+    cv::filter2D(img_double, img_du, img_double.depth(), du, cv::Point(-1, -1));
+    cv::filter2D(img_double, img_dv, img_double.depth(), dv, cv::Point(-1, -1));
     for (int i = 0; i < img.rows; i++)
     {
         for (int j = 0; j < img.cols; j++)
@@ -111,8 +111,8 @@ void secondDerivCornerMetric(cv::Mat I, int sigma, cv::Mat* cxy, cv::Mat* c45, c
     cv::GaussianBlur(I, Ig, cv::Size(sigma*7+1, sigma*7+1), sigma, sigma);
     cv::Mat du = (cv::Mat_<double>(1, 3) << 1, 0, -1);
     cv::Mat dv = du.t();
-    cv::filter2D(Ig, *Ix, Ig.depth(), du, cvPoint(-1, -1));
-    cv::filter2D(Ig, *Iy, Ig.depth(), dv, cvPoint(-1, -1));
+    cv::filter2D(Ig, *Ix, Ig.depth(), du, cv::Point(-1, -1));
+    cv::filter2D(Ig, *Iy, Ig.depth(), dv, cv::Point(-1, -1));
 
     cv::Mat I_45 = I.clone();
     cv::Mat I_n45 = I.clone();
@@ -129,10 +129,10 @@ void secondDerivCornerMetric(cv::Mat I, int sigma, cv::Mat* cxy, cv::Mat* c45, c
         }
     }
 
-    cv::filter2D(*Ix, *Ixy, Ix->depth(), dv, cvPoint(-1, -1));
+    cv::filter2D(*Ix, *Ixy, Ix->depth(), dv, cv::Point(-1, -1));
     cv::Mat I_45_x, I_45_y;
-    cv::filter2D(I_45, I_45_x, I_45.depth(), du, cvPoint(-1, -1));
-    cv::filter2D(I_45, I_45_y, I_45.depth(), dv, cvPoint(-1, -1));
+    cv::filter2D(I_45, I_45_x, I_45.depth(), du, cv::Point(-1, -1));
+    cv::filter2D(I_45, I_45_y, I_45.depth(), dv, cv::Point(-1, -1));
     for (int i = 0; i < I.rows; i++)
     {
         for (int j = 0; j < I.cols; j++)

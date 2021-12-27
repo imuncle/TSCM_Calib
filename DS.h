@@ -9,8 +9,8 @@ class DoubleSphereCamera
 {
     public:
     DoubleSphereCamera();
-    DoubleSphereCamera(double cx, double cy, double fx, double fy, double xi, double alpha);
-    void calibrate(const std::vector<std::vector<cv::Point2d>>& pixels, const std::vector<cv::Point3d>& worlds, const cv::Size img_size);
+    DoubleSphereCamera(double fx, double fy, double cx, double cy, double alpha, double xi);
+    void calibrate(const std::vector<std::vector<cv::Point2d>> pixels, std::vector<bool> has_chessboard, const std::vector<cv::Point3d>& worlds, const cv::Size img_size);
     void Reproject(const std::vector<cv::Point3d>& worlds, cv::Mat Rt, std::vector<cv::Point2d>& pixels);
     void undistort(double fx, double fy, double cx, double cy, cv::Size img_size, cv::Mat& mapx, cv::Mat& mapy);
     double cx() {return cx_;}
@@ -20,6 +20,10 @@ class DoubleSphereCamera
     double xi() {return xi_;}
     double alpha() {return alpha_;}
     std::vector<cv::Mat> Rt() {return Rt_;}
+    cv::Mat Rt(int id) {return Rt_[id];}
+    std::vector<std::vector<cv::Point2d>> pixels() {return pixels_;}
+    std::vector<bool> has_chessboard() {return has_chessboard_;}
+    bool has_chessboard(int id) {return has_chessboard_[id];}
     private:
     void initialize_param(const std::vector<std::vector<cv::Point2d>>& pixels, const std::vector<cv::Point3d>& worlds);
     double ReprojectError(const std::vector<cv::Point2d>& pixels, const std::vector<cv::Point3d>& worlds, cv::Mat Rt,
@@ -36,6 +40,8 @@ class DoubleSphereCamera
     std::vector<double> gammas_;
     std::vector<std::vector<double>> rt_; 
     std::vector<double> intrinsic_;
+    std::vector<std::vector<cv::Point2d>> pixels_;
+    std::vector<bool> has_chessboard_;
 
     struct ReprojectionError
     {
