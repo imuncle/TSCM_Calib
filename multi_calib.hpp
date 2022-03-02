@@ -30,6 +30,15 @@ class MultiCalib_camera
     bool has_chessboard(int id) {return has_chessboard_[id];}
     std::vector<std::vector<cv::Point2d>> pixels() {return pixel_coordinates_;}
     void update_Rt(cv::Mat R, cv::Mat t) {R_ = R; t_ = t;}
+    void update_intrinsic(double cx, double cy, double fx, double fy, double xi, double alpha)
+    {
+        cx_ = cx;
+        cy_ = cy;
+        fx_ = fx;
+        fy_ = fy;
+        xi_ = xi;
+        alpha_ = alpha;
+    }
     cv::Mat R() {return R_;}
     cv::Mat t() {return t_;}
     double cx() {return cx_;}
