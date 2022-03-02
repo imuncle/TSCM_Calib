@@ -33,6 +33,8 @@ MultiCalib::MultiCalib(std::vector<DoubleSphereCamera> cameras)
                     chessboards_[j] = MultiCalib_chessboard(R, t);
                 }
             }
+            cameras_[i] = MultiCalib_camera(cameras[i].cx(), cameras[i].cy(), cameras[i].fx(), cameras[i].fy(), cameras[i].xi(), cameras[i].alpha(),
+                                            R, t, cameras[i].has_chessboard(), cameras[i].pixels());
         }
         else
         {
@@ -56,25 +58,31 @@ MultiCalib::MultiCalib(std::vector<DoubleSphereCamera> cameras)
                         cv::Mat chess_t = chessboards_[j].t();
                         R = camera_R * chess_R.inv();
                         t = camera_t - R * chess_t;
+                        cameras_[i] = MultiCalib_camera(cameras[i].cx(), cameras[i].cy(), cameras[i].fx(), cameras[i].fy(), cameras[i].xi(), cameras[i].alpha(),
+                                            R, t, cameras[i].has_chessboard(), cameras[i].pixels());
+                        for(int k = 0; k < chessboard_num; k++)
+                        {
+                            // 自己姿态已知时，可以计算棋盘格的姿态
+                            if(cameras[i].has_chessboard(k) && chessboards_[k].is_initial() == false)
+                            {
+                                cv::Mat Rt = cameras[i].Rt(k);
+                                cv::Vec3f r1(Rt.at<double>(0,0),Rt.at<double>(1,0),Rt.at<double>(2,0));
+                                cv::Vec3f r2(Rt.at<double>(0,1),Rt.at<double>(1,1),Rt.at<double>(2,1));
+                                cv::Vec3f r3 = r1.cross(r2);
+                                cv::Mat camera_R = (cv::Mat_<double>(3,3) << r1[0], r2[0], r3[0], r1[1], r2[1], r3[1], r1[2], r2[2], r3[2]);
+                                cv::Mat camera_t = (cv::Mat_<double>(3,1) << Rt.at<double>(0,2), Rt.at<double>(1,2), Rt.at<double>(2,2));
+                                R = cameras_[i].R();
+                                t = cameras_[i].t();
+                                cv::Mat chess_R = R.inv() * camera_R;
+                                cv::Mat chess_t = R.inv() * (camera_t - t);
+                                chessboards_[k] = MultiCalib_chessboard(chess_R, chess_t);
+                            }
+                        }
                     }
                 }
                 else
                 {
-                    // 自己姿态已知时，可以计算棋盘格的姿态
-                    if(cameras[i].has_chessboard(j) && chessboards_[j].is_initial() == false)
-                    {
-                        cv::Mat Rt = cameras[i].Rt(j);
-                        cv::Vec3f r1(Rt.at<double>(0,0),Rt.at<double>(1,0),Rt.at<double>(2,0));
-                        cv::Vec3f r2(Rt.at<double>(0,1),Rt.at<double>(1,1),Rt.at<double>(2,1));
-                        cv::Vec3f r3 = r1.cross(r2);
-                        cv::Mat camera_R = (cv::Mat_<double>(3,3) << r1[0], r2[0], r3[0], r1[1], r2[1], r3[1], r1[2], r2[2], r3[2]);
-                        cv::Mat camera_t = (cv::Mat_<double>(3,1) << Rt.at<double>(0,2), Rt.at<double>(1,2), Rt.at<double>(2,2));
-                        R = cameras_[i].R();
-                        t = cameras_[i].t();
-                        cv::Mat chess_R = R.inv() * camera_R;
-                        cv::Mat chess_t = R.inv() * (camera_t - t);
-                        chessboards_[j] = MultiCalib_chessboard(chess_R, chess_t);
-                    }
+                    continue;
                 }
             }
         }
