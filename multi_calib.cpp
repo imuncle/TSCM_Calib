@@ -271,6 +271,72 @@ void MultiCalib::calibrate(const std::vector<cv::Point3d>& worlds)
     ceres::Solve(options, &problem, &summary);
 
     std::cout << summary.BriefReport() << std::endl;
+	
+    // 更新相机和棋盘格的参数
+    for(int i = 0; i < camera_num; i++)
+    {
+        if(cameras_[i].is_initial() == false)
+            continue;
+        cameras_[i].update_intrinsic(intrinsic_[i][2], intrinsic_[i][3], intrinsic_[i][0], intrinsic_[i][1], intrinsic_[i][4], intrinsic_[i][5]);
+        cv::Mat R, t;
+        cv::Mat r = (cv::Mat_<double>(3, 1) << camera_rt_[i][0], camera_rt_[i][1], camera_rt_[i][2]);
+        cv::Rodrigues(r, R);
+        t = (cv::Mat_<double>(3,1) << camera_rt_[i][3], camera_rt_[i][4], camera_rt_[i][5]);
+        cameras_[i].update_Rt(R, t);
+    }
+    for(int i = 0; i < chessboard_num; i++)
+    {
+        if(chessboards_[i].is_initial() == false)
+            continue;
+        cv::Mat R, t;
+        cv::Mat r = (cv::Mat_<double>(3, 1) << chessboard_rt_[i][0], chessboard_rt_[i][1], chessboard_rt_[i][2]);
+        cv::Rodrigues(r, R);
+        t = (cv::Mat_<double>(3,1) << chessboard_rt_[i][3], chessboard_rt_[i][4], chessboard_rt_[i][5]);
+        chessboards_[i].update_Rt(R, t);
+    }
+    // 计算重投影误差
+    std::cout << "multi calib done!" << std::endl;
+    double cntt = 0;
+    double error_sum = 0;
+    for(int m = 0; m < camera_num; m++)
+    {
+        std::vector<std::vector<cv::Point2d>> pixels = cameras_[m].pixels();
+        double error = 0;
+        double cnt = 0;
+        for(int i = 0; i < chessboard_num; i++)
+        {
+            if(chessboards_[i].is_initial())
+            {
+                for(int j = 0; j < pixels[i].size(); j++)
+                {
+                    cv::Mat R = chessboards_[i].R();
+                    cv::Mat t = chessboards_[i].t();
+                    cv::Mat p = (cv::Mat_<double>(3, 1) << worlds[j].x, worlds[j].y, worlds[j].z);
+                    p = R * p + t;
+                    R = cameras_[m].R();
+                    t = cameras_[m].t();
+                    p = R * p + t;
+                    double fx = cameras_[m].fx();
+                    double fy = cameras_[m].fy();
+                    double cx = cameras_[m].cx();
+                    double cy = cameras_[m].cy();
+                    double alpha = cameras_[m].alpha();
+                    double xi = cameras_[m].xi();
+                    double d1 = std::sqrt(p.at<double>(0,0)*p.at<double>(0,0)+p.at<double>(1,0)*p.at<double>(1,0)+p.at<double>(2,0)*p.at<double>(2,0));
+                    double d2 = std::sqrt(p.at<double>(0,0)*p.at<double>(0,0)+p.at<double>(1,0)*p.at<double>(1,0)+std::pow(p.at<double>(2,0)+xi*d1,2));
+                    double pixel_x = fx * p.at<double>(0,0)/(alpha*d2+(1-alpha)*(xi*d1+p.at<double>(2,0))) + cx;
+                    double pixel_y = fy * p.at<double>(1,0)/(alpha*d2+(1-alpha)*(xi*d1+p.at<double>(2,0))) + cy;
+                    error += std::sqrt((pixels[i][j].x-pixel_x)*(pixels[i][j].x-pixel_x) + (pixels[i][j].y-pixel_y)*(pixels[i][j].y-pixel_y));
+                    cnt++;
+                    cntt++;
+                }
+            }
+        }
+        error_sum += error;
+        error /= cnt;
+        std::cout << "camera_" << m << " reprojection error: " << error << std::endl;
+    }
+    std::cout << "average reprojection error: " << error_sum/cntt << std::endl;
 }
 
 double position_x = 0, position_y = 0, last_position_x = 0, last_position_y = 0, position_z = 500;
