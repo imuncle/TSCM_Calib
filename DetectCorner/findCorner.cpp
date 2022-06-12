@@ -42,12 +42,7 @@ struct Chessboarder_t findCorner(cv::Mat img, int sigma)
     struct Corner_t corners;
     corners.p = nonMaximumSuppression(cxy+c45, 4, 0.07, 5);
     corners = getOrientations(img_angle, img_weight, corners, 10);
-    for (unsigned int i = 0; i < corners.p.size(); i++)
-    {
-        cv::circle(img, corners.p[i], 5, cv::Scalar(0, 0, 255), 2);
-        cv::line(img, corners.p[i], cv::Point(corners.p[i].x + 10*corners.v1[i].x,corners.p[i].y + 10*corners.v1[i].y), cv::Scalar(100), 2);
-        cv::line(img, corners.p[i], cv::Point(corners.p[i].x + 10*corners.v2[i].x,corners.p[i].y + 10*corners.v2[i].y), cv::Scalar(100), 2);
-    }
+    
     int radius[3] = { 8, 12, 16 };
     corners = scoreCorners(img_double, img_weight, corners, radius);
     auto iterator_v1 = corners.v1.begin();
@@ -56,7 +51,7 @@ struct Chessboarder_t findCorner(cv::Mat img, int sigma)
     auto iterator_score = corners.score.begin();
     while (iterator_v1 != corners.v1.end())
     {
-        if (*iterator_score < 0.01)
+        if (*iterator_score < 0.001)
         {
             corners.v1.erase(iterator_v1);
             corners.v2.erase(iterator_v2);
@@ -72,6 +67,13 @@ struct Chessboarder_t findCorner(cv::Mat img, int sigma)
         iterator_p++;
         iterator_score++;
     }
+    // for (unsigned int i = 0; i < corners.p.size(); i++)
+    // {
+    //     cv::circle(img, corners.p[i], 5, cv::Scalar(0, 0, 255), 2);
+    //     cv::line(img, corners.p[i], cv::Point(corners.p[i].x + 10*corners.v1[i].x,corners.p[i].y + 10*corners.v1[i].y), cv::Scalar(100), 2);
+    //     cv::line(img, corners.p[i], cv::Point(corners.p[i].x + 10*corners.v2[i].x,corners.p[i].y + 10*corners.v2[i].y), cv::Scalar(100), 2);
+    // }
+    // cv::imshow("corners", img);
     std::vector<cv::Mat> chessboards = chessboardsFromCorners(corners);
     struct Corner_t new_corner;
     for (unsigned int j = 0; j < chessboards.size(); j++)
@@ -268,12 +270,16 @@ std::vector<cv::Point2d> edgeOrientations(cv::Mat img_angle, cv::Mat img_weight)
         v[0] = cv::Point2d(cos(modes[1].z), sin(modes[1].z));
         v[1] = cv::Point2d(cos(modes[0].z), sin(modes[0].z));
         delta_angle = std::min(modes[0].z - modes[1].z, modes[1].z + M_PI - modes[0].z);
+        if(delta_angle <= 0.3)
+            v[0] = cv::Point2d(cos(modes[2].z), sin(modes[2].z));
     }
     else
     {
         v[0] = cv::Point2d(cos(modes[0].z), sin(modes[0].z));
         v[1] = cv::Point2d(cos(modes[1].z), sin(modes[1].z));
         delta_angle = std::min(modes[1].z - modes[0].z, modes[0].z + M_PI - modes[1].z);
+        if(delta_angle <= 0.3)
+            v[1] = cv::Point2d(cos(modes[2].z), sin(modes[2].z));
     }
     return v;
 
@@ -393,7 +399,7 @@ struct Corner_t scoreCorners(cv::Mat img, cv::Mat img_weight, struct Corner_t co
 {
     int width = img.cols;
     int height = img.rows;
-    double score[3] = { 0 };
+    std::vector<double> score = { 0,0,0 };
     for (unsigned int i = 0; i < corners.p.size(); i++)
     {
         int u = round(corners.p[i].x);
@@ -420,7 +426,7 @@ struct Corner_t scoreCorners(cv::Mat img, cv::Mat img_weight, struct Corner_t co
                 score[j] = cornerCorrelationScore(img_sub, img_weight_sub, corners.v1[i], corners.v2[i]);
             }
         }
-        std::sort(score, score + 3);
+        std::sort(score.begin(), score.end());
         corners.score[i] = score[2];
     }
     return corners;

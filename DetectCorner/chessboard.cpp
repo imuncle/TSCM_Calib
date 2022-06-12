@@ -97,24 +97,6 @@ std::vector<cv::Mat> chessboardsFromCorners(struct Corner_t corners)
             }
             chess = new_chess.clone();
         }
-        // 如果原点在右上角或右下角，棋盘旋转180度
-        // cv::Point2d p0 = corners.p[chess.at<uint16_t>(0, 0)];
-        // cv::Point2d p1 = corners.p[chess.at<uint16_t>(0, 1)];
-        // double theta = std::atan2(p1.y - p0.y, p1.x - p0.x);
-        // if(theta < 0) theta += 6.2831853;
-        // if((theta > 0.7854 && theta < 2.3562 && p0.y < p1.y) || // 右上角
-        //    (theta > 2.3562 && theta < 3.9270 && p0.x > p1.x)) // 右下角
-        // {
-        //     new_chess = cv::Mat::zeros(cv::Size(chess.cols, chess.rows), CV_16U);
-        //     for (int j = 0; j < new_chess.rows; j++)
-        //     {
-        //         for (int k = 0; k < new_chess.cols; k++)
-        //         {
-        //             new_chess.at<uint16_t>(j, k) = chess.at<uint16_t>(chess.rows - j - 1, chess.cols - k - 1);
-        //         }
-        //     }
-        //     chess = new_chess.clone();
-        // }
         chessboards[i] = chess;
     }
     return chessboards;
