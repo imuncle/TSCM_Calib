@@ -51,8 +51,8 @@ class MultiCalib_camera
     cv::Mat t() {return t_;}
     double cx() {return cx_;}
     double cy() {return cy_;}
-    double fx() {return fx_;}
-    double fy() {return fy_;}
+    double fx() {return fx_*(1-alpha_);}
+    double fy() {return fy_*(1-alpha_);}
     double xi() {return xi_;}
     double alpha() {return alpha_;}
     std::vector<double> intrinsic_;

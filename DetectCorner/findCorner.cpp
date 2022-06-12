@@ -51,7 +51,7 @@ struct Chessboarder_t findCorner(cv::Mat img, int sigma)
     auto iterator_score = corners.score.begin();
     while (iterator_v1 != corners.v1.end())
     {
-        if (*iterator_score < 0.001)
+        if (*iterator_score < 0.01)
         {
             corners.v1.erase(iterator_v1);
             corners.v2.erase(iterator_v2);
@@ -67,13 +67,6 @@ struct Chessboarder_t findCorner(cv::Mat img, int sigma)
         iterator_p++;
         iterator_score++;
     }
-    // for (unsigned int i = 0; i < corners.p.size(); i++)
-    // {
-    //     cv::circle(img, corners.p[i], 5, cv::Scalar(0, 0, 255), 2);
-    //     cv::line(img, corners.p[i], cv::Point(corners.p[i].x + 10*corners.v1[i].x,corners.p[i].y + 10*corners.v1[i].y), cv::Scalar(100), 2);
-    //     cv::line(img, corners.p[i], cv::Point(corners.p[i].x + 10*corners.v2[i].x,corners.p[i].y + 10*corners.v2[i].y), cv::Scalar(100), 2);
-    // }
-    // cv::imshow("corners", img);
     std::vector<cv::Mat> chessboards = chessboardsFromCorners(corners);
     struct Corner_t new_corner;
     for (unsigned int j = 0; j < chessboards.size(); j++)
