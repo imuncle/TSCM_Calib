@@ -3,7 +3,7 @@
 
 std::vector<std::string> camera_name{"front", "right", "rear", "left"};
 
-MultiCalib::MultiCalib(std::vector<DoubleSphereCamera> cameras, const std::vector<cv::Point3d>& worlds)
+MultiCalib::MultiCalib(std::vector<TripleSphereCamera> cameras, const std::vector<cv::Point3d>& worlds)
 {
     worlds_ = worlds;
     int camera_num = cameras.size();
@@ -86,8 +86,9 @@ MultiCalib::MultiCalib(std::vector<DoubleSphereCamera> cameras, const std::vecto
             R = Rs[min_id];
             t = ts[min_id];
         }
-        cameras_[i] = MultiCalib_camera(cameras[i].cx(), cameras[i].cy(), cameras[i].fx(), cameras[i].fy(), cameras[i].xi(), cameras[i].alpha(),
-                                            R, t, cameras[i].has_chessboard(), cameras[i].pixels());
+        cameras_[i] = MultiCalib_camera(cameras[i].cx(), cameras[i].cy(), cameras[i].fx(), cameras[i].fy(), cameras[i].xi(), cameras[i].lamda(), cameras[i].alpha(),
+                                        cameras[i].b(), cameras[i].c(), 
+                                        R, t, cameras[i].has_chessboard(), cameras[i].pixels());
     }
     // 然后计算棋盘的位姿
     for(int i = 0; i < chessboard_num; i++)
@@ -176,7 +177,7 @@ void MultiCalib::calibrate()
                             new ceres::AutoDiffCostFunction<
                                 ReprojectionError,
                                 2,  // num_residuals
-                                6,6,6>(cost_function),
+                                6,6,9>(cost_function),
                             NULL,
                             cameras_[m].rt_.data(),
                             chessboards_[i].rt_.data(),
@@ -193,7 +194,7 @@ void MultiCalib::calibrate()
                             new ceres::AutoDiffCostFunction<
                                 ReprojectionError,
                                 2,  // num_residuals
-                                6,6,6>(cost_function),
+                                6,6,9>(cost_function),
                             NULL,
                             cameras_[m].rt_.data(),
                             chessboards_[i].rt_.data(),
@@ -256,11 +257,19 @@ void MultiCalib::calibrate()
                     double cx = cameras_[m].cx();
                     double cy = cameras_[m].cy();
                     double alpha = cameras_[m].alpha();
+                    double lamda = cameras_[m].lamda();
                     double xi = cameras_[m].xi();
-                    double d1 = std::sqrt(p.at<double>(0,0)*p.at<double>(0,0)+p.at<double>(1,0)*p.at<double>(1,0)+p.at<double>(2,0)*p.at<double>(2,0));
-                    double d2 = std::sqrt(p.at<double>(0,0)*p.at<double>(0,0)+p.at<double>(1,0)*p.at<double>(1,0)+std::pow(p.at<double>(2,0)+xi*d1,2));
-                    double pixel_x = fx * (1-alpha)*p.at<double>(0,0)/(alpha*d2+(1-alpha)*(xi*d1+p.at<double>(2,0))) + cx;
-                    double pixel_y = fy * (1-alpha)*p.at<double>(1,0)/(alpha*d2+(1-alpha)*(xi*d1+p.at<double>(2,0))) + cy;
+                    double b = cameras_[m].b();
+                    double c = cameras_[m].c();
+                    double X = p.at<double>(0,0);
+                    double Y = p.at<double>(1,0);
+                    double Z = p.at<double>(2,0);
+                    double d1 = std::sqrt(X*X+Y*Y+Z*Z);
+                    double d2 = std::sqrt(X*X+Y*Y+std::pow(Z+xi*d1,2));
+                    double d3 = std::sqrt(X*X+Y*Y+std::pow(Z+xi*d1+lamda*d2,2));
+                    double ksai = Z+xi*d1+lamda*d2+alpha/(1-alpha)*d3;
+                    double pixel_x = fx * X/ksai + b * Y/ksai + cx;
+                    double pixel_y = c * X/ksai + fy * Y/ksai + cy;
                     error += std::sqrt((pixels[i][j].x-pixel_x)*(pixels[i][j].x-pixel_x) + (pixels[i][j].y-pixel_y)*(pixels[i][j].y-pixel_y));
                     cnt++;
                     cntt++;
@@ -351,7 +360,9 @@ void MultiCalib::show_result()
             std::cout << "=================" << std::endl;
             std::cout << yellow << "[camera_" << i << "]: " << std::endl << t << std::endl;
             std::cout << R << std::endl;
-            std::cout << "fx: " << cameras_[i].fx() << ", fy: " << cameras_[i].fy() << ", cx: " << cameras_[i].cx() << ", cy: " << cameras_[i].cy() << ", alpha: " << cameras_[i].alpha() << ", xi: " << cameras_[i].xi() << std::endl;
+            std::cout << "fx: " << cameras_[i].fx() << ", fy: " << cameras_[i].fy() << ", cx: " << cameras_[i].cx() << ", cy: " << cameras_[i].cy() << 
+                         ", xi: " << cameras_[i].xi() << ", lamda: " << cameras_[i].lamda() << ", alpha: " << cameras_[i].alpha() << 
+                         ", b: " << cameras_[i].b() << ", c: " << cameras_[i].c() << std::endl;
             std::cout << reset;
             R = R.inv();
             t = -R * t;
@@ -486,7 +497,7 @@ void MultiCalib::show_result()
         
         cv::imshow("show_window", show_img);
         int key = cv::waitKey(10);
-        if(key == 'q')
+        if(key == 'q' || key == 27 || cv::getWindowProperty("show_window", cv::WND_PROP_AUTOSIZE) < 0)
             break;
     }
 }

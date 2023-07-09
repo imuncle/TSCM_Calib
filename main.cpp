@@ -1,10 +1,11 @@
 #include "findCorner.h"
 #include <opencv2/opencv.hpp>
-#include "DS.h"
+#include "TS.h"
 #include "multi_calib.h"
 #include "cout_style.h"
+#include <time.h>
 
-std::vector<cv::Point3d> monocular_calib(std::vector<std::string> filenames, double chessboard_size, cv::Size chessboard_num, DoubleSphereCamera& ds_camera)
+std::vector<cv::Point3d> monocular_calib(std::vector<std::string> filenames, double chessboard_size, cv::Size chessboard_num, TripleSphereCamera& ds_camera)
 {
     
     std::vector<cv::Point3d> world_coordinates;
@@ -20,7 +21,6 @@ std::vector<cv::Point3d> monocular_calib(std::vector<std::string> filenames, dou
     std::vector<std::vector<cv::Point2d>> pixel_coordinates;
     std::vector<std::string> imgs_filename;
     std::cout << blue << "检测角点..." << reset << std::endl;
-    cv::Mat corners_img = cv::Mat(cv::Size(1280, 1080), CV_8UC3, cv::Scalar(0,0,0));
     struct Chessboarder_t find_corner_chessboard;
     for(int i = 0; i < filenames.size(); i++)
     {
@@ -30,8 +30,7 @@ std::vector<cv::Point3d> monocular_calib(std::vector<std::string> filenames, dou
         img_size = img.size();
         std::vector<cv::Point2d> pixels_per_image;
         find_corner_chessboard = findCorner(img, 4);
-        if((find_corner_chessboard.chessboard.size() == 0) || 
-            (find_corner_chessboard.chessboard.size() > 1 || find_corner_chessboard.chessboard[0].rows != chessboard_num.height || find_corner_chessboard.chessboard[0].cols != chessboard_num.width))
+        if(find_corner_chessboard.chessboard.size() != 1 || find_corner_chessboard.chessboard[0].size() != chessboard_num)
         {
             has_chessboard.push_back(false);
             pixel_coordinates.push_back(pixels_per_image);
@@ -43,7 +42,6 @@ std::vector<cv::Point3d> monocular_calib(std::vector<std::string> filenames, dou
             for (int v = 0; v < find_corner_chessboard.chessboard[0].cols; v++)
             {
                 cv::circle(img, find_corner_chessboard.corners.p[find_corner_chessboard.chessboard[0].at<uint16_t>(u, v)], 5, cv::Scalar(0,0,255), 2);
-                cv::circle(corners_img, find_corner_chessboard.corners.p[find_corner_chessboard.chessboard[0].at<uint16_t>(u, v)], 5, cv::Scalar(0,0,255), 2);
                 pixels_per_image.push_back(find_corner_chessboard.corners.p[find_corner_chessboard.chessboard[0].at<uint16_t>(u, v)]);
             }
         }
@@ -56,7 +54,6 @@ std::vector<cv::Point3d> monocular_calib(std::vector<std::string> filenames, dou
         cv::imshow("img", img);
         cv::waitKey(1);
     }
-    cv::imwrite("corners.jpg", corners_img);
     ds_camera.calibrate(pixel_coordinates, has_chessboard, world_coordinates, img_size, chessboard_num);
     // 精细化角点
     std::vector<cv::Mat> Rts;
@@ -77,10 +74,10 @@ std::vector<cv::Point3d> monocular_calib(std::vector<std::string> filenames, dou
             // 纠正翻转的棋盘，保证棋盘左上角是黑块（要求棋盘格行列数分别为奇数和偶数）
             cv::Mat gray;
             cv::cvtColor(chessboard_img, gray, cv::COLOR_BGR2GRAY);
-            cv::Point2d p1(chessboard_size/4, chessboard_size/4);
-            cv::Point2d p2(chessboard_size*3/4, chessboard_size/4);
-            cv::Point2d p3(chessboard_size*3/4, chessboard_size*3/4);
-            cv::Point2d p4(chessboard_size/4, chessboard_size*3/4);
+            cv::Point2d p1(chessboard_size/2, chessboard_size/2);
+            cv::Point2d p2(chessboard_size*3/2, chessboard_size/2);
+            cv::Point2d p3(chessboard_size*3/2, chessboard_size*3/2);
+            cv::Point2d p4(chessboard_size/2, chessboard_size*3/2);
             int gray1 = gray.at<uchar>(int(p1.y), int(p1.x));
             int gray2 = gray.at<uchar>(int(p2.y), int(p2.x));
             int gray3 = gray.at<uchar>(int(p3.y), int(p3.x));
@@ -99,19 +96,21 @@ std::vector<cv::Point3d> monocular_calib(std::vector<std::string> filenames, dou
             for (int v = 0; v < find_chessboard.chessboard[0].cols; v++)
             {
                 cv::Point2d new_corner = find_chessboard.corners.p[find_chessboard.chessboard[0].at<uint16_t>(u, v)];
-                cv::Mat p = (cv::Mat_<double>(3,1) << new_corner.x*2-chessboard_size, new_corner.y*2-chessboard_size, 1);
+                cv::circle(chessboard_img, new_corner, 5, cv::Scalar(0,0,255), 2);
+                cv::Mat p = (cv::Mat_<double>(3,1) << new_corner.x-chessboard_size, new_corner.y-chessboard_size, 1);
                 p = Rts[i]*p;
                 new_corner = ds_camera.project(p);
                 pixel_coordinates[i][v+u*chessboard_num.width] = new_corner;
+                cv::circle(img, new_corner, 2, cv::Scalar(0,255,0), 2);
             }
         }
         // 纠正翻转的棋盘，保证棋盘左上角是黑块（要求棋盘格行列数分别为奇数和偶数）
         cv::Mat gray;
         cv::cvtColor(chessboard_img, gray, cv::COLOR_BGR2GRAY);
-        cv::Point2d p1(chessboard_size/4, chessboard_size/4);
-        cv::Point2d p2(chessboard_size*3/4, chessboard_size/4);
-        cv::Point2d p3(chessboard_size*3/4, chessboard_size*3/4);
-        cv::Point2d p4(chessboard_size/4, chessboard_size*3/4);
+        cv::Point2d p1(chessboard_size/2, chessboard_size/2);
+        cv::Point2d p2(chessboard_size*3/2, chessboard_size/2);
+        cv::Point2d p3(chessboard_size*3/2, chessboard_size*3/2);
+        cv::Point2d p4(chessboard_size/2, chessboard_size*3/2);
         int gray1 = gray.at<uchar>(int(p1.y), int(p1.x));
         int gray2 = gray.at<uchar>(int(p2.y), int(p2.x));
         int gray3 = gray.at<uchar>(int(p3.y), int(p3.x));
@@ -124,11 +123,14 @@ std::vector<cv::Point3d> monocular_calib(std::vector<std::string> filenames, dou
                 pixel_coordinates[i][k] = tmp[pixel_coordinates[i].size()-1-k];
         }
         cv::imshow("chessboard", chessboard_img);
+        cv::imshow("img", img);
         cv::waitKey(1);
     }
     ds_camera.calibrate(pixel_coordinates, has_chessboard, world_coordinates, img_size, chessboard_num);
     std::cout << yellow;
-    std::cout << "fx:" << ds_camera.fx() << ", fy:" << ds_camera.fy() << ", cx:" << ds_camera.cx() << ", cy:" << ds_camera.cy() << ", alpha:" << ds_camera.alpha() << ", xi:" << ds_camera.xi() << std::endl;
+    std::cout << "fx:" << ds_camera.fx() << ", fy:" << ds_camera.fy() << ", cx:" << ds_camera.cx() << ", cy:" << ds_camera.cy() << ", xi:" << ds_camera.xi() 
+              << ", lamda:" << ds_camera.lamda() << ", alpha:" << ds_camera.alpha() 
+              << ", b:" << ds_camera.b() << ", c:" << ds_camera.c() << std::endl;
     std::cout << reset;
     
     Rts = ds_camera.Rt();
@@ -139,17 +141,16 @@ std::vector<cv::Point3d> monocular_calib(std::vector<std::string> filenames, dou
         if(has_chessboard[i] == false)
             continue;
         cv::Mat img = cv::imread(filenames[i].data());
-        // std::cout << filenames[i].data() << std::endl;
         cv::Mat chessboard_img = ds_camera.undistort_chessboard(img, i, chessboard_num, chessboard_size);
         for(int m = 0; m < chessboard_num.width; m++)
         {
-            cv::line(chessboard_img, cv::Point(chessboard_size/2*(m+1), 0), 
-                                     cv::Point(chessboard_size/2*(m+1), chessboard_size/2*(chessboard_num.height+1)), cv::Scalar(0,255,0), 1);
+            cv::line(chessboard_img, cv::Point(chessboard_size*(m+1), 0), 
+                                     cv::Point(chessboard_size*(m+1), chessboard_size*(chessboard_num.height+1)), cv::Scalar(0,255,0), 1);
         }
         for(int m = 0; m < chessboard_num.height; m++)
         {
-            cv::line(chessboard_img, cv::Point(0, chessboard_size/2*(m+1)), 
-                                     cv::Point(chessboard_size/2*(chessboard_num.width+1), chessboard_size/2*(m+1)), cv::Scalar(0,255,0), 1);
+            cv::line(chessboard_img, cv::Point(0, chessboard_size*(m+1)), 
+                                     cv::Point(chessboard_size*(chessboard_num.width+1), chessboard_size*(m+1)), cv::Scalar(0,255,0), 1);
         }
         for(int j = 0; j < pixel_coordinates[i].size(); j++)
         {
@@ -158,7 +159,7 @@ std::vector<cv::Point3d> monocular_calib(std::vector<std::string> filenames, dou
             cv::Mat pp = (cv::Mat_<double>(3,1) << p.x, p.y, p.z);
             pp = Rt.inv() * pp;
             cv::Point2d point(pp.at<double>(0)/pp.at<double>(2), pp.at<double>(1)/pp.at<double>(2));
-            cv::circle(chessboard_img, point/2+cv::Point2d(chessboard_size/2, chessboard_size/2), 5, cv::Scalar(0,0,255), 2);
+            cv::circle(chessboard_img, point+cv::Point2d(chessboard_size, chessboard_size), 5, cv::Scalar(0,0,255), 2);
             int x = j%chessboard_num.width;
             int y = (j-x)/chessboard_num.width;
         }
@@ -181,85 +182,41 @@ std::vector<cv::Point3d> monocular_calib(std::vector<std::string> filenames, dou
         cv::waitKey(1);
     }
     std::cout << yellow << "mean error: " << error/cnt << reset << std::endl;
-    // cv::FileStorage fs("/home/xiesheng/Desktop/DSCM_Calib/calib_4/left.yaml", cv::FileStorage::WRITE);
-    // fs << "fx" << ds_camera.fx() << "fy" << ds_camera.fy() << "cx" << ds_camera.cx() << "cy" << ds_camera.cy() << "alpha" << ds_camera.alpha() << "xi" << ds_camera.xi();
-    // fs << "has_chessboard" << "[";
-    // for(int i = 0; i < has_chessboard.size(); i++)
-    // {
-    //     fs << "{:" << "bool" << has_chessboard[i] << "}";
-    // }
-    // fs << "]";
-    // fs << "pixels" << "[";
-    // for(int i = 0; i < pixel_coordinates.size(); i++)
-    // {
-    //     fs << "{:" << "Mat" << pixel_coordinates[i] << "}";
-    // }
-    // fs << "]";
-    // for(int i = 0; i < Rts.size(); i++)
-    // {
-    //     fs << ("Rt"+std::to_string(i)) << Rts[i];
-    // }
-    // fs << "mean error" << error/cnt;
-    // fs.release();
     return world_coordinates;
 }
 
 int main(int argc, char **argv)
 {
-    int chessboard_size = 45;
+    int chessboard_size = 30;
     cv::Size chessboard_num(11, 8);
     char str[80];
     std::vector<std::string> filenames1;
-    for(int i = 0; i < 469; i++)
+    for(int i = 0; i < 26; i++)
     {
-        sprintf(str, "/home/xiesheng/Desktop/DSCM_Calib/pics_data_600/cam0/%05d.jpg", i);
+        sprintf(str, "/home/xiesheng/Downloads/2023-6-18-triple/stereo-calib/left/%d.jpg", i);
         std::string name = str;
         filenames1.push_back(name);
     }
-    DoubleSphereCamera camera_1;
+    TripleSphereCamera camera_1;
     std::cout << green << "开始标定相机1..." << reset << std::endl;
     std::vector<cv::Point3d> world_coordinates = monocular_calib(filenames1, chessboard_size, chessboard_num, camera_1);
     // return 0;
 
     std::vector<std::string> filenames2;
-    for(int i = 0; i < 469; i++)
+    for(int i = 0; i < 26; i++)
     {
-        sprintf(str, "/home/xiesheng/Desktop/DSCM_Calib/pics_data_600/cam1/%05d.jpg", i);
+        sprintf(str, "/home/xiesheng/Downloads/2023-6-18-triple/stereo-calib/right/%d.jpg", i);
         std::string name = str;
         filenames2.push_back(name);
     }
-    DoubleSphereCamera camera_2;
+    TripleSphereCamera camera_2;
     std::cout << green << "开始标定相机2..." << reset << std::endl;
     monocular_calib(filenames2, chessboard_size, chessboard_num, camera_2);
-
-    std::vector<std::string> filenames3;
-    for(int i = 0; i < 469; i++)
-    {
-        sprintf(str, "/home/xiesheng/Desktop/DSCM_Calib/pics_data_600/cam2/%05d.jpg", i);
-        std::string name = str;
-        filenames3.push_back(name);
-    }
-    DoubleSphereCamera camera_3;
-    std::cout << green << "开始标定相机3..." << reset << std::endl;
-    monocular_calib(filenames3, chessboard_size, chessboard_num, camera_3);
-
-    std::vector<std::string> filenames4;
-    for(int i = 0; i < 469; i++)
-    {
-        sprintf(str, "/home/xiesheng/Desktop/DSCM_Calib/pics_data_600/cam3/%05d.jpg", i);
-        std::string name = str;
-        filenames4.push_back(name);
-    }
-    DoubleSphereCamera camera_4;
-    std::cout << green << "开始标定相机4..." << reset << std::endl;
-    monocular_calib(filenames4, chessboard_size, chessboard_num, camera_4);
     
-    std::vector<DoubleSphereCamera> cameras;
+    std::vector<TripleSphereCamera> cameras;
     
     cameras.push_back(camera_1);
     cameras.push_back(camera_2);
-    cameras.push_back(camera_3);
-    cameras.push_back(camera_4);
     MultiCalib mul_calib = MultiCalib(cameras, world_coordinates);
     std::cout << green <<"开始联合标定..." << reset << std::endl;
     std::cout << "多相机标定前..." << std::endl;
@@ -286,11 +243,19 @@ int main(int argc, char **argv)
                     double cx = mul_calib.cameras_[m].cx();
                     double cy = mul_calib.cameras_[m].cy();
                     double alpha = mul_calib.cameras_[m].alpha();
+                    double lamda = mul_calib.cameras_[m].lamda();
                     double xi = mul_calib.cameras_[m].xi();
-                    double d1 = std::sqrt(p.at<double>(0,0)*p.at<double>(0,0)+p.at<double>(1,0)*p.at<double>(1,0)+p.at<double>(2,0)*p.at<double>(2,0));
-                    double d2 = std::sqrt(p.at<double>(0,0)*p.at<double>(0,0)+p.at<double>(1,0)*p.at<double>(1,0)+std::pow(p.at<double>(2,0)+xi*d1,2));
-                    double pixel_x = fx * (1-alpha)*p.at<double>(0,0)/(alpha*d2+(1-alpha)*(xi*d1+p.at<double>(2,0))) + cx;
-                    double pixel_y = fy * (1-alpha)*p.at<double>(1,0)/(alpha*d2+(1-alpha)*(xi*d1+p.at<double>(2,0))) + cy;
+                    double b = mul_calib.cameras_[m].b();
+                    double c = mul_calib.cameras_[m].c();
+                    double X = p.at<double>(0,0);
+                    double Y = p.at<double>(1,0);
+                    double Z = p.at<double>(2,0);
+                    double d1 = std::sqrt(X*X+Y*Y+Z*Z);
+                    double d2 = std::sqrt(X*X+Y*Y+std::pow(Z+xi*d1,2));
+                    double d3 = std::sqrt(X*X+Y*Y+std::pow(Z+xi*d1+lamda*d2,2));
+                    double ksai = Z+xi*d1+lamda*d2+alpha/(1-alpha)*d3;
+                    double pixel_x = fx * X/ksai + b * Y/ksai + cx;
+                    double pixel_y = c * X/ksai + fy * Y/ksai + cy;
                     error += std::sqrt((pixels[i][j].x-pixel_x)*(pixels[i][j].x-pixel_x) + (pixels[i][j].y-pixel_y)*(pixels[i][j].y-pixel_y));
                     cnt++;
                 }
@@ -300,5 +265,34 @@ int main(int argc, char **argv)
     }
     mul_calib.calibrate();
     mul_calib.show_result();
+
+    // save calibration result
+    time_t tt;
+    time( &tt );
+    tt = tt + 8*3600;  // transform the time zone
+    tm* t= gmtime( &tt );
+    char yaml_filename[100];
+    sprintf(yaml_filename, "%d-%02d-%02d %02d-%02d-%02d.yaml",
+            t->tm_year + 1900,
+            t->tm_mon + 1,
+            t->tm_mday,
+            t->tm_hour,
+            t->tm_min,
+            t->tm_sec);
+    cv::FileStorage fs_write(yaml_filename, cv::FileStorage::WRITE);
+    for(size_t i = 0; i < mul_calib.cameras_.size(); i++)
+    {
+        char cam_name[10];
+        sprintf(cam_name, "cam%d", (int)i);
+        fs_write << cam_name << mul_calib.cameras_[i].intrinsic_matrix_;
+        sprintf(cam_name, "Twc%d", (int)i);
+        cv::Mat_<double> R = mul_calib.cameras_[i].R();
+        cv::Mat_<double> t = mul_calib.cameras_[i].t();
+        cv::Mat T = (cv::Mat_<double>(3,4) << R(0,0), R(0,1), R(0,2), t(0),
+                                              R(1,0), R(1,1), R(1,2), t(1),
+                                              R(2,0), R(2,1), R(2,2), t(2));
+        fs_write << cam_name << T;
+    }
+    fs_write.release();
     return 0;
 }

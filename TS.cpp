@@ -1,6 +1,6 @@
-#include "DS.h"
+#include "TS.h"
 
-DoubleSphereCamera::DoubleSphereCamera()
+TripleSphereCamera::TripleSphereCamera()
 {
     has_init_guess_ = false;
     cx_ = 0;
@@ -9,10 +9,12 @@ DoubleSphereCamera::DoubleSphereCamera()
     fy_ = 0;
     xi_ = 0;
     alpha_ = 0;
-    intrinsic_.resize(6);
+    lamda_ = 0;
+    b_ = c_ = 0;
+    intrinsic_.resize(9);
 }
 
-DoubleSphereCamera::DoubleSphereCamera(double fx, double fy, double cx, double cy, double alpha, double xi)
+TripleSphereCamera::TripleSphereCamera(double fx, double fy, double cx, double cy, double xi, double lamda, double alpha)
 {
     has_init_guess_= true;
     cx_ = cx;
@@ -20,11 +22,12 @@ DoubleSphereCamera::DoubleSphereCamera(double fx, double fy, double cx, double c
     fx_ = fx;
     fy_ = fy;
     xi_ = xi;
+    lamda_ = lamda;
     alpha_ = alpha;
-    intrinsic_.resize(6);
+    intrinsic_.resize(9);
 }
 
-bool DoubleSphereCamera::calibrate(const std::vector<std::vector<cv::Point2d>> pixels, 
+bool TripleSphereCamera::calibrate(const std::vector<std::vector<cv::Point2d>> pixels, 
                                    std::vector<bool> has_chessboard, 
                                    const std::vector<cv::Point3d>& worlds, 
                                    const cv::Size img_size, 
@@ -40,9 +43,10 @@ bool DoubleSphereCamera::calibrate(const std::vector<std::vector<cv::Point2d>> p
         cx_ = img_size.width / 2 - 0.5;
         cy_ = img_size.height / 2 - 0.5;
         xi_ = 0.0;
+        lamda_ = 0.0;
         alpha_ = 0.5;
         estimate_focal(pixels, worlds, img_size, chessboard_num);
-        std::cout << "[initialize] focal:" << fx_ << ", cx:" << cx_ << ", cy:" << cy_ << ", alpha:" << alpha_ << ", xi:" << xi_ << std::endl;
+        std::cout << "[initialize] focal:" << fx_ << ", cx:" << cx_ << ", cy:" << cy_ << ", xi:" << xi_ << ", lamda:" << lamda_ << ", alpha:" << alpha_ << std::endl;
         if(fx_ == 0) return false;
     }
     estimate_extrinsic(pixels, worlds, chessboard_num);
@@ -51,7 +55,10 @@ bool DoubleSphereCamera::calibrate(const std::vector<std::vector<cv::Point2d>> p
     intrinsic_[2] = cx_;
     intrinsic_[3] = cy_;
     intrinsic_[4] = xi_;
-    intrinsic_[5] = alpha_;
+    intrinsic_[5] = lamda_;
+    intrinsic_[6] = alpha_;
+    intrinsic_[7] = b_;
+    intrinsic_[8] = c_;
     for(int i = 0; i < Rt_.size(); i++)
     {
         if(has_chessboard_[i] == false)
@@ -75,7 +82,10 @@ bool DoubleSphereCamera::calibrate(const std::vector<std::vector<cv::Point2d>> p
     cx_ = intrinsic_[2];
     cy_ = intrinsic_[3];
     xi_ = intrinsic_[4];
-    alpha_ = intrinsic_[5];
+    lamda_ = intrinsic_[5];
+    alpha_ = intrinsic_[6];
+    b_ = intrinsic_[7];
+    c_ = intrinsic_[8];
     for(int i = 0; i < Rt_.size(); i++)
     {
         if(has_chessboard_[i] == false)
@@ -93,10 +103,11 @@ bool DoubleSphereCamera::calibrate(const std::vector<std::vector<cv::Point2d>> p
         Rt_[i].at<double>(1,2) = rt_[i][4];
         Rt_[i].at<double>(2,2) = rt_[i][5];
     }
+
     return status;
 }
 
-void DoubleSphereCamera::estimate_focal(const std::vector<std::vector<cv::Point2d>>& pixels, const std::vector<cv::Point3d>& worlds, cv::Size img_size, const cv::Size chessboard_num)
+void TripleSphereCamera::estimate_focal(const std::vector<std::vector<cv::Point2d>>& pixels, const std::vector<cv::Point3d>& worlds, cv::Size img_size, const cv::Size chessboard_num)
 {
     double focal_ = 0;
     // 将像素坐标原点移到(cx, cy)
@@ -156,7 +167,7 @@ void DoubleSphereCamera::estimate_focal(const std::vector<std::vector<cv::Point2
     fx_ = fy_ = focal_;
 }
 
-void DoubleSphereCamera::estimate_extrinsic(const std::vector<std::vector<cv::Point2d>>& pixels, const std::vector<cv::Point3d>& worlds, const cv::Size chessboard_num)
+void TripleSphereCamera::estimate_extrinsic(const std::vector<std::vector<cv::Point2d>>& pixels, const std::vector<cv::Point3d>& worlds, const cv::Size chessboard_num)
 {
     for(int k = 0; k < pixels.size(); k++)
     {
@@ -191,39 +202,49 @@ void DoubleSphereCamera::estimate_extrinsic(const std::vector<std::vector<cv::Po
     }
 }
 
-double DoubleSphereCamera::ReprojectError(const std::vector<cv::Point2d>& pixels, const std::vector<cv::Point3d>& worlds, cv::Mat Rt,
-                          double cx, double cy, double fx, double fy, double xi, double alpha)
+double TripleSphereCamera::ReprojectError(const std::vector<cv::Point2d>& pixels, const std::vector<cv::Point3d>& worlds, cv::Mat Rt,
+                          double cx, double cy, double fx, double fy, double xi, double lamda, double alpha, double b, double c)
 {
     double error = 0;
     for(int i = 0; i < worlds.size(); i++)
     {
         cv::Mat P = (cv::Mat_<double>(3,1) << worlds[i].x, worlds[i].y, 1);
         P = Rt * P;
-        double d1 = std::sqrt(P.at<double>(0,0)*P.at<double>(0,0)+P.at<double>(1,0)*P.at<double>(1,0)+P.at<double>(2,0)*P.at<double>(2,0));
-        double d2 = std::sqrt(P.at<double>(0,0)*P.at<double>(0,0)+P.at<double>(1,0)*P.at<double>(1,0)+std::pow(P.at<double>(2,0)+xi*d1,2));
-        double pixel_x = fx * (1-alpha)*P.at<double>(0,0)/(alpha*d2+(1-alpha)*(xi*d1+P.at<double>(2,0))) + cx;
-        double pixel_y = fy * (1-alpha)*P.at<double>(1,0)/(alpha*d2+(1-alpha)*(xi*d1+P.at<double>(2,0))) + cy;
+        double X = P.at<double>(0,0);
+        double Y = P.at<double>(1,0);
+        double Z = P.at<double>(2,0);
+        double d1 = std::sqrt(X*X+Y*Y+Z*Z);
+        double d2 = std::sqrt(X*X+Y*Y+std::pow(Z+xi*d1,2));
+        double d3 = std::sqrt(X*X+Y*Y+std::pow(Z+xi*d1+lamda*d2,2));
+        double ksai = Z+xi*d1+lamda*d2+alpha/(1-alpha)*d3;
+        double pixel_x = fx * X/ksai + b * Y/ksai + cx;
+        double pixel_y = c * X/ksai + fy * Y/ksai + cy;
         error += std::sqrt((pixels[i].x-pixel_x)*(pixels[i].x-pixel_x) + (pixels[i].y-pixel_y)*(pixels[i].y-pixel_y));
     }
     return error / worlds.size();
 }
 
-void DoubleSphereCamera::Reproject(const std::vector<cv::Point3d>& worlds, cv::Mat Rt, std::vector<cv::Point2d>& pixels)
+void TripleSphereCamera::Reproject(const std::vector<cv::Point3d>& worlds, cv::Mat Rt, std::vector<cv::Point2d>& pixels)
 {
     pixels.resize(worlds.size());
     for(int i = 0; i < worlds.size(); i++)
     {
         cv::Mat P = (cv::Mat_<double>(3,1) << worlds[i].x, worlds[i].y, 1);
         P = Rt * P;
-        double d1 = std::sqrt(P.at<double>(0,0)*P.at<double>(0,0)+P.at<double>(1,0)*P.at<double>(1,0)+P.at<double>(2,0)*P.at<double>(2,0));
-        double d2 = std::sqrt(P.at<double>(0,0)*P.at<double>(0,0)+P.at<double>(1,0)*P.at<double>(1,0)+std::pow(P.at<double>(2,0)+xi_*d1,2));
-        double pixel_x = fx_ * (1-alpha_)*P.at<double>(0,0)/(alpha_*d2+(1-alpha_)*(xi_*d1+P.at<double>(2,0))) + cx_;
-        double pixel_y = fy_ * (1-alpha_)*P.at<double>(1,0)/(alpha_*d2+(1-alpha_)*(xi_*d1+P.at<double>(2,0))) + cy_;
+        double X = P.at<double>(0,0);
+        double Y = P.at<double>(1,0);
+        double Z = P.at<double>(2,0);
+        double d1 = std::sqrt(X*X+Y*Y+Z*Z);
+        double d2 = std::sqrt(X*X+Y*Y+std::pow(Z+xi_*d1,2));
+        double d3 = std::sqrt(X*X+Y*Y+std::pow(Z+xi_*d1+lamda_*d2,2));
+        double ksai = Z+xi_*d1+lamda_*d2+alpha_/(1-alpha_)*d3;
+        double pixel_x = fx_ * X/ksai + b_ * Y/ksai + cx_;
+        double pixel_y = c_ * X/ksai + fy_ * Y/ksai + cy_;
         pixels[i] = cv::Point2d(pixel_x, pixel_y);
     }
 }
 
-bool DoubleSphereCamera::refinement(const std::vector<std::vector<cv::Point2d>>& pixels, const std::vector<cv::Point3d>& worlds)
+bool TripleSphereCamera::refinement(const std::vector<std::vector<cv::Point2d>>& pixels, const std::vector<cv::Point3d>& worlds)
 {
     ceres::Problem problem;
 
@@ -240,7 +261,7 @@ bool DoubleSphereCamera::refinement(const std::vector<std::vector<cv::Point2d>>&
                 new ceres::AutoDiffCostFunction<
                     ReprojectionError,
                     2,  // num_residuals
-                    6,6>(cost_function),
+                    9,6>(cost_function),
                 NULL,
                 intrinsic_.data(),
                 rt_[i].data());
@@ -260,7 +281,7 @@ bool DoubleSphereCamera::refinement(const std::vector<std::vector<cv::Point2d>>&
     return summary.termination_type == ceres::CONVERGENCE;
 }
 
-void DoubleSphereCamera::undistort(double fx, double fy, double cx, double cy, cv::Size img_size, cv::Mat& mapx, cv::Mat& mapy)
+void TripleSphereCamera::undistort(double fx, double fy, double cx, double cy, cv::Size img_size, cv::Mat& mapx, cv::Mat& mapy)
 {
     mapx = cv::Mat(img_size, CV_32FC1);
     mapy = cv::Mat(img_size, CV_32FC1);
@@ -274,20 +295,22 @@ void DoubleSphereCamera::undistort(double fx, double fy, double cx, double cy, c
             double z = 1.0;
             double d1 = std::sqrt(x*x+y*y+z*z);
             double d2 = std::sqrt(x*x+y*y+std::pow(z+xi_*d1,2));
-            double pixel_x = fx_ * x/(alpha_*d2+(1-alpha_)*(xi_*d1+z)) + cx_;
-            double pixel_y = fy_ * y/(alpha_*d2+(1-alpha_)*(xi_*d1+z)) + cy_;
+            double d3 = std::sqrt(x*x+y*y+std::pow(z+xi_*d1+lamda_*d2,2));
+            double ksai = z+xi_*d1+lamda_*d2+alpha_/(1-alpha_)*d3;
+            double pixel_x = fx_ * x/ksai + b_ * y/ksai + cx_;
+            double pixel_y = c_ * x/ksai + fy_ * y/ksai + cy_;
             mapx.at<float>(i, j) = pixel_x;
             mapy.at<float>(i, j) = pixel_y;
         }
     }
 }
 
-cv::Mat DoubleSphereCamera::undistort_chessboard(cv::Mat src, int index, cv::Size chessboard, double chessboard_size)
+cv::Mat TripleSphereCamera::undistort_chessboard(cv::Mat src, int index, cv::Size chessboard, double chessboard_size)
 {
     cv::Mat dst;
     if(has_chessboard_[index] == false)
         return dst;
-    cv::Size img_size((chessboard.width+1)*chessboard_size/2, (chessboard.height+1)*chessboard_size/2);
+    cv::Size img_size((chessboard.width+1)*chessboard_size, (chessboard.height+1)*chessboard_size);
     cv::Mat mapx = cv::Mat(img_size, CV_32FC1);
     cv::Mat mapy = cv::Mat(img_size, CV_32FC1);
     cv::Mat Rt = Rt_[index];
@@ -295,7 +318,7 @@ cv::Mat DoubleSphereCamera::undistort_chessboard(cv::Mat src, int index, cv::Siz
     {
         for(int j = 0; j < img_size.width; j++)
         {
-            cv::Mat P = (cv::Mat_<double>(3,1) << (j*2-chessboard_size), (i*2-chessboard_size), 1);
+            cv::Mat P = (cv::Mat_<double>(3,1) << (j-chessboard_size), (i-chessboard_size), 1);
             P = Rt*P;
             cv::Point2d pixel = project(P);
             mapx.at<float>(i, j) = pixel.x;
@@ -306,11 +329,16 @@ cv::Mat DoubleSphereCamera::undistort_chessboard(cv::Mat src, int index, cv::Siz
     return dst;
 }
 
-cv::Point2d DoubleSphereCamera::project(cv::Mat P)
+cv::Point2d TripleSphereCamera::project(cv::Mat P)
 {
-    double d1 = std::sqrt(P.at<double>(0,0)*P.at<double>(0,0)+P.at<double>(1,0)*P.at<double>(1,0)+P.at<double>(2,0)*P.at<double>(2,0));
-    double d2 = std::sqrt(P.at<double>(0,0)*P.at<double>(0,0)+P.at<double>(1,0)*P.at<double>(1,0)+std::pow(P.at<double>(2,0)+xi_*d1,2));
-    double pixel_x = fx_ * (1-alpha_)*P.at<double>(0,0)/(alpha_*d2+(1-alpha_)*(xi_*d1+P.at<double>(2,0))) + cx_;
-    double pixel_y = fy_ * (1-alpha_)*P.at<double>(1,0)/(alpha_*d2+(1-alpha_)*(xi_*d1+P.at<double>(2,0))) + cy_;
+    double X = P.at<double>(0,0);
+    double Y = P.at<double>(1,0);
+    double Z = P.at<double>(2,0);
+    double d1 = std::sqrt(X*X+Y*Y+Z*Z);
+    double d2 = std::sqrt(X*X+Y*Y+std::pow(Z+xi_*d1,2));
+    double d3 = std::sqrt(X*X+Y*Y+std::pow(Z+xi_*d1+lamda_*d2,2));
+    double ksai = Z+xi_*d1+lamda_*d2+alpha_/(1-alpha_)*d3;
+    double pixel_x = fx_ * X/ksai + b_ * Y/ksai + cx_;
+    double pixel_y = c_ * X/ksai + fy_ * Y/ksai + cy_;
     return cv::Point2d(pixel_x, pixel_y);
 }

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(DSCM_Calib)
+project(TSCM_Calib)
 
 add_compile_options(-std=c++11)
 set(CMAKE_BUILD_TYPE "Release")
@@ -14,7 +14,7 @@ include_directories(
 
 add_executable(${PROJECT_NAME}
   main.cpp
-  DS.cpp
+  TS.cpp
   multi_calib.cpp
   DetectCorner/findCorner.cpp
   DetectCorner/chessboard.cpp

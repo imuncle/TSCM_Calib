@@ -4,13 +4,13 @@
 #include <ceres/ceres.h>
 #include <ceres/rotation.h>
 #include <opencv2/opencv.hpp>
-#include "DS.h"
+#include "TS.h"
 
 class MultiCalib_camera
 {
     public:
     MultiCalib_camera(){}
-    MultiCalib_camera(double cx, double cy, double fx, double fy, double xi, double alpha,
+    MultiCalib_camera(double cx, double cy, double fx, double fy, double xi, double lamda, double alpha, double b, double c,
                       cv::Mat R, cv::Mat t, std::vector<bool> has_chessboard,
                       std::vector<std::vector<cv::Point2d>> pixel_coordinates){
         cv::Mat r;
@@ -19,13 +19,17 @@ class MultiCalib_camera
         rt_ = rt;
         R_ = R;
         t_ = t;
-        intrinsic_ = std::vector<double>{fx, fy, cx, cy, xi, alpha};
+        intrinsic_ = std::vector<double>{fx, fy, cx, cy, xi, lamda, alpha, b, c};
         cx_ = intrinsic_[2];
         cy_ = intrinsic_[3];
         fx_ = intrinsic_[0];
         fy_ = intrinsic_[1];
         xi_ = intrinsic_[4];
-        alpha_ = intrinsic_[5];
+        lamda_ = intrinsic_[5];
+        alpha_ = intrinsic_[6];
+        b_ = intrinsic_[7];
+        c_ = intrinsic_[8];
+        intrinsic_matrix_ = (cv::Mat_<double>(1,9) << fx_, fy_, cx_, cy_, xi_, lamda_, alpha_, b_, c_);
         has_chessboard_ = has_chessboard;
         pixel_coordinates_ = pixel_coordinates;
         is_initial_ = true;
@@ -42,21 +46,29 @@ class MultiCalib_camera
         fx_ = intrinsic_[0];
         fy_ = intrinsic_[1];
         xi_ = intrinsic_[4];
-        alpha_ = intrinsic_[5];
+        lamda_ = intrinsic_[5];
+        alpha_ = intrinsic_[6];
+        b_ = intrinsic_[7];
+        c_ = intrinsic_[8];
         cv::Mat r = (cv::Mat_<double>(3, 1) << rt_[0], rt_[1], rt_[2]);
         cv::Rodrigues(r, R_);
         t_ = (cv::Mat_<double>(3,1) << rt_[3], rt_[4], rt_[5]);
+        intrinsic_matrix_ = (cv::Mat_<double>(1,9) << fx_, fy_, cx_, cy_, xi_, lamda_, alpha_, b_, c_);
     }
     cv::Mat R() {return R_;}
     cv::Mat t() {return t_;}
     double cx() {return cx_;}
     double cy() {return cy_;}
-    double fx() {return fx_*(1-alpha_);}
-    double fy() {return fy_*(1-alpha_);}
+    double fx() {return fx_;}
+    double fy() {return fy_;}
     double xi() {return xi_;}
+    double lamda() {return lamda_;}
     double alpha() {return alpha_;}
+    double b() {return b_;}
+    double c() {return c_;}
     std::vector<double> intrinsic_;
     std::vector<double> rt_;
+    cv::Mat intrinsic_matrix_;
     private:
     std::vector<bool> has_chessboard_;
     std::vector<std::vector<cv::Point2d>> pixel_coordinates_;
@@ -67,7 +79,10 @@ class MultiCalib_camera
     double fx_;
     double fy_;
     double xi_;
+    double lamda_;
     double alpha_;
+    double b_;
+    double c_;
     bool is_initial_ = false;
 };
 
@@ -104,7 +119,7 @@ class MultiCalib_chessboard
 class MultiCalib
 {
     public:
-    MultiCalib(std::vector<DoubleSphereCamera> cameras, const std::vector<cv::Point3d>& worlds);
+    MultiCalib(std::vector<TripleSphereCamera> cameras, const std::vector<cv::Point3d>& worlds);
     ~MultiCalib(){}
     void calibrate();
     void show_result();
@@ -154,8 +169,25 @@ class MultiCalib
             T one = T(1.0);
             T d1 = ceres::sqrt(chessboard_camera_p[0]*chessboard_camera_p[0]+chessboard_camera_p[1]*chessboard_camera_p[1]+chessboard_camera_p[2]*chessboard_camera_p[2]);
             T d2 = ceres::sqrt(chessboard_camera_p[0]*chessboard_camera_p[0]+chessboard_camera_p[1]*chessboard_camera_p[1]+(chessboard_camera_p[2]+intrinsic_[4]*d1)*(chessboard_camera_p[2]+intrinsic_[4]*d1));
-            T pixel_x = intrinsic_[0] * (one-intrinsic_[5])*chessboard_camera_p[0]/(intrinsic_[5]*d2+(one-intrinsic_[5])*(intrinsic_[4]*d1+chessboard_camera_p[2])) + intrinsic_[2];
-            T pixel_y = intrinsic_[1] * (one-intrinsic_[5])*chessboard_camera_p[1]/(intrinsic_[5]*d2+(one-intrinsic_[5])*(intrinsic_[4]*d1+chessboard_camera_p[2])) + intrinsic_[3];
+            T d3 = ceres::sqrt(chessboard_camera_p[0]*chessboard_camera_p[0]+chessboard_camera_p[1]*chessboard_camera_p[1]+(chessboard_camera_p[2]+intrinsic_[4]*d1+intrinsic_[5]*d2)*(chessboard_camera_p[2]+intrinsic_[4]*d1+intrinsic_[5]*d2));
+            T ksai = chessboard_camera_p[2]+intrinsic_[4]*d1+intrinsic_[5]*d2+intrinsic_[6]/(one-intrinsic_[6])*d3;
+            // T ksai = chessboard_camera_p[2]+intrinsic_[6]/(one-intrinsic_[6])*d1;
+            // T pixel_x = intrinsic_[0] * chessboard_camera_p[0]/ksai + intrinsic_[7] * chessboard_camera_p[1]/ksai + intrinsic_[2];
+            // T pixel_y = intrinsic_[8] * chessboard_camera_p[0]/ksai + intrinsic_[1] * chessboard_camera_p[1]/ksai + intrinsic_[3];
+            T pixel_x = intrinsic_[0] * chessboard_camera_p[0]/ksai + intrinsic_[2];
+            T pixel_y = intrinsic_[1] * chessboard_camera_p[1]/ksai + intrinsic_[3];
+
+            // T x = chessboard_camera_p[0]/ksai;
+            // T y = chessboard_camera_p[1]/ksai;
+            // T r_sqrure = x*x + y*y;
+
+            // T pixel_x = x*(T(1.0)+intrinsic_[7]*r_sqrure+intrinsic_[8]*r_sqrure*r_sqrure+intrinsic_[11]*r_sqrure*r_sqrure*r_sqrure) + 
+            //             T(2.0)*intrinsic_[9]*x*y + intrinsic_[10]*(r_sqrure+T(2.0)*x*x);
+            // T pixel_y = y*(T(1.0)+intrinsic_[7]*r_sqrure+intrinsic_[8]*r_sqrure*r_sqrure+intrinsic_[11]*r_sqrure*r_sqrure*r_sqrure) + 
+            //             intrinsic_[9]*(r_sqrure+T(2.0)*y*y) + T(2.0)*intrinsic_[10]*x*y;
+            // pixel_x = pixel_x * intrinsic_[0] + intrinsic_[2];
+            // pixel_y = pixel_y * intrinsic_[1] + intrinsic_[3];
+
             // 计算残差
             residuls[0] = T(observ_p.x) - pixel_x;
             residuls[1] = T(observ_p.y) - pixel_y;

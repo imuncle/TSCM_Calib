@@ -1,9 +1,32 @@
-# DSCM_Calib
-The calibration application with Double Sphere Camera Model
+# TSCM-Calib
 
-- [x] single camera calibration
-- [x] multi camera calibration
+The multi-camera calibration tool based on Triple Sphere Camera Model.
 
-> This project is developed with OpenCV 4. If you have some problem during compiling, maybe the OpenCV version is wrong. You should replace the uncompatible API manually.
+## Dependence
 
-测试数据集：[百度网盘](https://pan.baidu.com/s/1iTzwtG9HWD_va2STfKekhQ?pwd=6zar)
+* OpenCV
+
+  you can install it by `sudo apt install libopencv-dev`.
+
+* Ceres-Solver
+
+  you can install it by `sudo apt install libceres-dev`.
+
+## build
+
+```bash
+mkdir build
+cd build
+cmake ..
+make
+```
+
+## Usage
+
+Change the image path in `main` function. The tool will output the calibration result in yaml format, saved in `build` directory.
+
+> Note: press `Esc` or `Q` to exit.
+
+> Note: The filenames should be exactly same for the pictures captured simulately from different cameras.
+
+> Note: The Triple Sphere Camera Model can be found in [OmniVidar](https://openaccess.thecvf.com/content/CVPR2023/papers/Xie_OmniVidar_Omnidirectional_Depth_Estimation_From_Multi-Fisheye_Images_CVPR_2023_paper.pdf).

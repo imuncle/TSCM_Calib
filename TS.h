@@ -1,15 +1,15 @@
-#ifndef DS_H
-#define DS_H
+#ifndef TS_H
+#define TS_H
 
 #include <opencv2/opencv.hpp>
 #include <ceres/ceres.h>
 #include <ceres/rotation.h>
 
-class DoubleSphereCamera
+class TripleSphereCamera
 {
     public:
-    DoubleSphereCamera();
-    DoubleSphereCamera(double fx, double fy, double cx, double cy, double alpha, double xi);
+    TripleSphereCamera();
+    TripleSphereCamera(double fx, double fy, double cx, double cy, double xi, double lamda, double alpha);
     bool calibrate(const std::vector<std::vector<cv::Point2d>> pixels, 
                    std::vector<bool> has_chessboard, 
                    const std::vector<cv::Point3d>& worlds, 
@@ -19,10 +19,13 @@ class DoubleSphereCamera
     void undistort(double fx, double fy, double cx, double cy, cv::Size img_size, cv::Mat& mapx, cv::Mat& mapy);
     double cx() {return cx_;}
     double cy() {return cy_;}
-    double fx() {return fx_*(1-alpha_);}
-    double fy() {return fy_*(1-alpha_);}
+    double fx() {return fx_;}
+    double fy() {return fy_;}
     double xi() {return xi_;}
+    double lamda() {return lamda_;}
     double alpha() {return alpha_;}
+    double b() {return b_;}
+    double c() {return c_;}
     std::vector<cv::Mat> Rt() {return Rt_;}
     cv::Mat Rt(int id) {return Rt_[id];}
     void setRt(std::vector<cv::Mat> Rts) {Rt_ = Rts;}
@@ -35,13 +38,20 @@ class DoubleSphereCamera
     cv::Point2d project(cv::Mat P);
     cv::Point3d get_unit_sphere_coordinate(cv::Point2d pixel, cv::Mat transform=cv::Mat::eye(3,3,CV_64F))
     {
-        float mx = (pixel.x - cx_) / fx_ / (1-alpha_);
-        float my = (pixel.y - cy_) / fy_ / (1-alpha_);
-        float r_square = mx*mx + my*my;
-        float mz = (1-alpha_*alpha_*r_square)/(alpha_*std::sqrt(1-(2*alpha_-1)*r_square)+1-alpha_);
-        float ksai = alpha_ / (1 - alpha_);
-        float x = (mz*xi_+std::sqrt(mz*mz+(1-xi_*xi_)*r_square))/(mz*mz+r_square);
-        cv::Mat p = (cv::Mat_<double>(3,1) << x*mx, x*my, x*mz-xi_);
+        double x = pixel.x - cx_;
+        double y = pixel.y - cy_;
+        double mx = (fy_*x - b_*y)/(fx_*fy_-b_*c_);
+        double my = (-c_*x + fx_*y)/(fx_*fy_-b_*c_);
+        double ksai = alpha_ / (1 - alpha_);
+        double r_square = mx*mx + my*my;
+        double gamma = (ksai+std::sqrt(1+(1-ksai*ksai)*r_square))/(r_square+1);
+        double yita = lamda_*(gamma-ksai)+std::sqrt(((gamma-ksai)*(gamma-ksai)-1)*lamda_*lamda_+1);
+        double mz = yita*(gamma-ksai);
+        double mu = xi_*(mz-lamda_)+std::sqrt(xi_*xi_*((mz-lamda_)*(mz-lamda_)-1)+1);
+        x = mu*yita*gamma*mx;
+        y = mu*yita*gamma*my;
+        double z = mu*(mz-lamda_) - xi_;
+        cv::Mat p = (cv::Mat_<double>(3,1) << x, y, z);
         p = transform * p;
         return cv::Point3d(p.at<double>(0), p.at<double>(1), p.at<double>(2));
     }
@@ -62,7 +72,7 @@ class DoubleSphereCamera
     void estimate_extrinsic(const std::vector<std::vector<cv::Point2d>>& pixels, const std::vector<cv::Point3d>& worlds, const cv::Size chessboard_num);
     void initialize_param(const std::vector<std::vector<cv::Point2d>>& pixels, const std::vector<cv::Point3d>& worlds);
     double ReprojectError(const std::vector<cv::Point2d>& pixels, const std::vector<cv::Point3d>& worlds, cv::Mat Rt,
-                          double cx, double cy, double fx, double fy, double xi, double alpha);
+                          double cx, double cy, double fx, double fy, double xi, double lamda, double alpha, double b, double c);
     bool refinement(const std::vector<std::vector<cv::Point2d>>& pixels, const std::vector<cv::Point3d>& worlds);
     bool has_init_guess_;
     double cx_;
@@ -70,7 +80,10 @@ class DoubleSphereCamera
     double fx_;
     double fy_;
     double xi_;
+    double lamda_;
     double alpha_;
+    double b_;
+    double c_;
     std::vector<cv::Mat> Rt_;
     std::vector<std::vector<double>> rt_; 
     std::vector<std::vector<cv::Point2d>> pixels_;
@@ -89,7 +102,7 @@ class DoubleSphereCamera
             const T* const rt_,//6 : angle axis and translation
             T* residuls)const
         {
-            // intrinsic: fx fy cx cy xi alpha
+            // intrinsic: fx fy cx cy xi lambda alpha
             T p[3];
             p[0] = T(_board_pts.x);
             p[1] = T(_board_pts.y);
@@ -103,8 +116,13 @@ class DoubleSphereCamera
 
             T d1 = ceres::sqrt(P[0]*P[0]+P[1]*P[1]+P[2]*P[2]);
             T d2 = ceres::sqrt(P[0]*P[0]+P[1]*P[1]+(P[2]+intrinsic_[4]*d1)*(P[2]+intrinsic_[4]*d1));
-            T pixel_x = intrinsic_[0] * (one-intrinsic_[5])*P[0]/(intrinsic_[5]*d2+(one-intrinsic_[5])*(intrinsic_[4]*d1+P[2])) + intrinsic_[2];
-            T pixel_y = intrinsic_[1] * (one-intrinsic_[5])*P[1]/(intrinsic_[5]*d2+(one-intrinsic_[5])*(intrinsic_[4]*d1+P[2])) + intrinsic_[3];
+            T d3 = ceres::sqrt(P[0]*P[0]+P[1]*P[1]+(P[2]+intrinsic_[4]*d1+intrinsic_[5]*d2)*(P[2]+intrinsic_[4]*d1+intrinsic_[5]*d2));
+            T ksai = P[2]+intrinsic_[4]*d1+intrinsic_[5]*d2+intrinsic_[6]/(one-intrinsic_[6])*d3;    // TS Model
+            // T ksai = P[2]+intrinsic_[4]*d1+intrinsic_[6]/(one-intrinsic_[6])*d2;    // DS Model
+            // T pixel_x = intrinsic_[0] * P[0]/ksai + intrinsic_[7] * P[1]/ksai + intrinsic_[2];
+            // T pixel_y = intrinsic_[8] * P[0]/ksai + intrinsic_[1] * P[1]/ksai + intrinsic_[3];
+            T pixel_x = intrinsic_[0] * P[0]/ksai + intrinsic_[2];
+            T pixel_y = intrinsic_[1] * P[1]/ksai + intrinsic_[3];
 
             // residuls
             residuls[0] = T(_img_pts.x) - pixel_x;
