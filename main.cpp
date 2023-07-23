@@ -187,36 +187,59 @@ std::vector<cv::Point3d> monocular_calib(std::vector<std::string> filenames, dou
 
 int main(int argc, char **argv)
 {
-    int chessboard_size = 30;
+    int chessboard_size = 45;
     cv::Size chessboard_num(11, 8);
     char str[80];
     std::vector<std::string> filenames1;
-    for(int i = 0; i < 26; i++)
+    for(int i = 0; i < 185; i++)
     {
-        sprintf(str, "/home/xiesheng/Downloads/2023-6-18-triple/stereo-calib/left/%d.jpg", i);
+        sprintf(str, "/home/xiesheng/Downloads/calib_4/video/front/%d.jpg", i);
         std::string name = str;
         filenames1.push_back(name);
     }
     TripleSphereCamera camera_1;
     std::cout << green << "开始标定相机1..." << reset << std::endl;
     std::vector<cv::Point3d> world_coordinates = monocular_calib(filenames1, chessboard_size, chessboard_num, camera_1);
-    // return 0;
 
     std::vector<std::string> filenames2;
-    for(int i = 0; i < 26; i++)
+    for(int i = 0; i < 185; i++)
     {
-        sprintf(str, "/home/xiesheng/Downloads/2023-6-18-triple/stereo-calib/right/%d.jpg", i);
+        sprintf(str, "/home/xiesheng/Downloads/calib_4/video/right/%d.jpg", i);
         std::string name = str;
         filenames2.push_back(name);
     }
     TripleSphereCamera camera_2;
     std::cout << green << "开始标定相机2..." << reset << std::endl;
     monocular_calib(filenames2, chessboard_size, chessboard_num, camera_2);
+
+    std::vector<std::string> filenames3;
+    for(int i = 0; i < 185; i++)
+    {
+        sprintf(str, "/home/xiesheng/Downloads/calib_4/video/rear/%d.jpg", i);
+        std::string name = str;
+        filenames3.push_back(name);
+    }
+    TripleSphereCamera camera_3;
+    std::cout << green << "开始标定相机3..." << reset << std::endl;
+    monocular_calib(filenames3, chessboard_size, chessboard_num, camera_3);
+
+    std::vector<std::string> filenames4;
+    for(int i = 0; i < 185; i++)
+    {
+        sprintf(str, "/home/xiesheng/Downloads/calib_4/video/left/%d.jpg", i);
+        std::string name = str;
+        filenames4.push_back(name);
+    }
+    TripleSphereCamera camera_4;
+    std::cout << green << "开始标定相机4..." << reset << std::endl;
+    monocular_calib(filenames4, chessboard_size, chessboard_num, camera_4);
     
     std::vector<TripleSphereCamera> cameras;
     
     cameras.push_back(camera_1);
     cameras.push_back(camera_2);
+    cameras.push_back(camera_3);
+    cameras.push_back(camera_4);
     MultiCalib mul_calib = MultiCalib(cameras, world_coordinates);
     std::cout << green <<"开始联合标定..." << reset << std::endl;
     std::cout << "多相机标定前..." << std::endl;
